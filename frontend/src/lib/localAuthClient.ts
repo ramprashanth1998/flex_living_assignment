@@ -235,7 +235,7 @@ class LocalAuthClient {
       }
     } catch (error) {
       console.error('[LocalAuth] Get user failed:', error);
-      return { user: null };
+      return { user: this.session?.user || null };
     }
   }
 
