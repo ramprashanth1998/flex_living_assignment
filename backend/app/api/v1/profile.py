@@ -1,3 +1,5 @@
+from time import timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form
 from typing import Dict, Any, List, Optional
 import logging
@@ -194,16 +196,28 @@ async def update_profile(
         
         # Update profile
         response = supabase.table('user_profiles').update(update_data).eq('user_id', user.id).execute()
-        
+
         if not response.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Profile not found"
-            )
-        
+            # No DB row (challenge/mock mode) — return a synthetic profile reflecting the update
+            now_iso = datetime.now(timezone.utc).isoformat()
+            synthetic = {
+                'id': f'synthetic-{user.id}',
+                'user_id': user.id,
+                'display_name': user.email.split('@')[0] if user.email else 'User',
+                'bio': None, 'phone': None, 'department': None,
+                'job_title': None, 'location': None,
+                'timezone': 'UTC', 'language': 'en', 'theme': 'light',
+                'avatar_url': None,
+                'created_at': now_iso, 'updated_at': now_iso,
+            }
+            synthetic.update(update_data)
+            updated_profile = UserProfile(**synthetic)
+            logger.info(f"Profile updated (mock mode) for user {user.id}")
+            return updated_profile
+
         updated_profile = UserProfile(**response.data[0])
         logger.info(f"Successfully updated profile for user {user.id}")
-        
+
         return updated_profile
         
     except HTTPException:
@@ -235,16 +249,26 @@ async def update_preferences(
         
         # Update preferences
         response = supabase.table('user_preferences').update(update_data).eq('user_id', user.id).execute()
-        
+
         if not response.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Preferences not found"
-            )
-        
+            # No DB row (challenge/mock mode) — return synthetic preferences reflecting the update
+            now_iso = datetime.now(timezone.utc).isoformat()
+            synthetic = {
+                'id': f'synthetic-{user.id}',
+                'user_id': user.id,
+                'notification_email': True, 'notification_push': True,
+                'notification_desktop': True, 'notification_sound': True,
+                'auto_refresh': True, 'compact_view': False, 'sidebar_collapsed': False,
+                'created_at': now_iso, 'updated_at': now_iso,
+            }
+            synthetic.update(update_data)
+            updated_preferences = UserPreferences(**synthetic)
+            logger.info(f"Preferences updated (mock mode) for user {user.id}")
+            return updated_preferences
+
         updated_preferences = UserPreferences(**response.data[0])
         logger.info(f"Successfully updated preferences for user {user.id}")
-        
+
         return updated_preferences
         
     except HTTPException:

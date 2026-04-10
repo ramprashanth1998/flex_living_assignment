@@ -347,6 +347,7 @@ try:
             def __init__(self):
                 self.auth = ChallengeAuth()
                 self.service = self
+                self.not_ = self
 
             def __getattr__(self, name):
                 # Return self for chaining (e.g. table().select())
@@ -362,6 +363,9 @@ try:
                 return self
                 
             def in_(self, *args):
+                return self
+            
+            def is_(self, *args):
                 return self
 
             def execute(self):
