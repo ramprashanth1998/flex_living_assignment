@@ -33,6 +33,7 @@ class LocalAuthClient {
   private subscribers: ((event: string, session: AuthSession | null) => void)[] = [];
   private session: AuthSession | null = null;
   private storageKey = 'base360-auth-token';
+  private refreshPromise: Promise<{ data: { session: AuthSession | null }, error: Error | null }> | null = null;
 
   constructor() {
     this.loadSession();
@@ -157,17 +158,59 @@ class LocalAuthClient {
 
         if (response.ok) {
           return { data: { session: this.session } };
-        } else {
-          // Session invalid, clear it
-          this.saveSession(null);
         }
-      } catch (error) {
-        console.warn('[LocalAuth] Session validation failed:', error);
         this.saveSession(null);
+        return { data: { session: null } };
+      } catch (error) {
+        console.warn('[LocalAuth] Session validation network error, keeping session:', error);
+        return { data: { session: this.session } };
       }
     }
 
     return { data: { session: null } };
+  }
+
+  async refreshSession(): Promise<{ data: { session: AuthSession | null }, error: Error | null }> {
+    // Deduplicate concurrent refresh calls — all callers share the same in-flight request
+    if (this.refreshPromise) {
+      console.log('[LocalAuth] Refresh already in progress, waiting for existing request...');
+      return this.refreshPromise;
+    }
+
+    if (!this.session?.access_token) {
+      return { data: { session: null }, error: new Error('No session to refresh') };
+    }
+
+    this.refreshPromise = (async () => {
+      try {
+        const response = await fetch(`${this.getApiUrl()}/api/v1/auth/refresh`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.session!.access_token}`,
+          },
+        });
+
+        if (!response.ok) {
+          console.warn('[LocalAuth] Token refresh failed, clearing session');
+          this.saveSession(null);
+          return { data: { session: null }, error: new Error('Refresh failed') };
+        }
+
+        const data = await response.json();
+        const newSession: AuthSession = { ...this.session!, access_token: data.access_token };
+        this.saveSession(newSession);
+        console.log('[LocalAuth] Session refreshed successfully');
+        return { data: { session: newSession }, error: null };
+
+      } catch (error: any) {
+        console.error('[LocalAuth] Refresh request failed:', error);
+        return { data: { session: null }, error };
+      } finally {
+        this.refreshPromise = null;
+      }
+    })();
+
+    return this.refreshPromise;
   }
 
   async getUser(token?: string): Promise<{ user: AuthUser | null }> {
@@ -236,6 +279,7 @@ class LocalAuthClient {
       signInWithPassword: this.signInWithPassword.bind(this),
       signOut: this.signOut.bind(this),
       getSession: this.getSession.bind(this),
+      refreshSession: this.refreshSession.bind(this),
       getUser: this.getUser.bind(this),
       setSession: this.setSession.bind(this),
       onAuthStateChange: this.onAuthStateChange.bind(this),

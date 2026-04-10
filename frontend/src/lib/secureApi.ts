@@ -186,7 +186,7 @@ export class SecureAPIClient {
         // Check if it's a valid JWT
         else if (token.includes('.') && token.split('.').length === 3) {
           const payload = JSON.parse(atob(token.split('.')[1]));
-          extractedTenantId = payload.user_metadata?.tenant_id || payload.tenant_id;
+          extractedTenantId = payload.app_metadata?.tenant_id || payload.tenant_id;
         }
 
         if (extractedTenantId) {
@@ -243,9 +243,9 @@ export class SecureAPIClient {
    * Validate tenant ID format for security
    */
   private isValidTenantId(tenantId: string): boolean {
-    // Check for UUID format (basic validation)
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    return typeof tenantId === 'string' && tenantId.length > 0 && uuidRegex.test(tenantId);
+    // Check for valid tenant id format (basic validation)
+    const validRegex = /^[a-z0-9][a-z0-9_-]{1,63}$/i;
+    return typeof tenantId === 'string' && tenantId.length > 0 && validRegex.test(tenantId);
   }
 
   /**

@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, EmailStr
 from typing import Optional, Dict, Any
 from ...database import supabase
@@ -6,7 +7,7 @@ from ...core.tenant_resolver import TenantResolver
 from ...models.auth import Permission
 import logging
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import jwt
 from ...config import settings
 
@@ -190,6 +191,27 @@ async def login(request: LoginRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Login failed"
         )
+
+
+@router.post("/refresh")
+async def refresh_token(credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())):
+    """Issue a new token for a still-valid token, extending expiry by 24 hours"""
+    try:
+        payload = jwt.decode(
+            credentials.credentials,
+            settings.secret_key,
+            algorithms=["HS256"],
+            audience="authenticated"
+        )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+    payload["exp"] = datetime.now(timezone.utc) + timedelta(hours=24)
+    new_token = jwt.encode(payload, settings.secret_key, algorithm="HS256")
+    logger.info(f"[REFRESH] Issued new token for {payload.get('email')}")
+    return {"access_token": new_token, "token_type": "bearer"}
 
 
 @router.post("/logout")
